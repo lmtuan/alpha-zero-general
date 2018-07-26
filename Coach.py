@@ -7,6 +7,7 @@ import time, os, sys
 from pickle import Pickler, Unpickler
 from random import shuffle
 
+from score4.Score4Game import display
 
 class Coach():
     """
@@ -88,8 +89,13 @@ class Coach():
                     # bookkeeping + plot progress
                     eps_time.update(time.time() - end)
                     end = time.time()
-                    bar.suffix  = '({eps}/{maxeps}) Eps Time: {et:.3f}s | Total: {total:} | ETA: {eta:}'.format(eps=eps+1, maxeps=self.args.numEps, et=eps_time.avg,
-                                                                                                               total=bar.elapsed_td, eta=bar.eta_td)
+                    bar.suffix  = '({eps}/{maxeps}) | Train Examples: {eg:} | Eps Time: {et:.3f}s | Total: {total:} | ETA: {eta:}'.format(
+                        eg = len(iterationTrainExamples),
+                        eps = eps+1, 
+                        maxeps = self.args.numEps, 
+                        et = eps_time.avg,
+                        total = bar.elapsed_td, 
+                        eta = bar.eta_td)
                     bar.next()
                 bar.finish()
 
@@ -109,28 +115,35 @@ class Coach():
                 trainExamples.extend(e)
             shuffle(trainExamples)
 
-            # training new network, keeping a copy of the old one
+            # training new network, pit against the current best (pnet)
             self.nnet.save_checkpoint(folder=self.args.checkpoint, filename='temp.pth.tar')
-            self.pnet.load_checkpoint(folder=self.args.checkpoint, filename='temp.pth.tar')
+            self.pnet.load_checkpoint(folder=self.args.checkpoint, filename='best.pth.tar')
             pmcts = MCTS(self.game, self.pnet, self.args)
             
             self.nnet.train(trainExamples)
             nmcts = MCTS(self.game, self.nnet, self.args)
 
-            print('PITTING AGAINST PREVIOUS VERSION')
+            print('PITTING AGAINST BEST VERSION')
             arena = Arena(lambda x: np.argmax(pmcts.getActionProb(x, temp=0)),
-                          lambda x: np.argmax(nmcts.getActionProb(x, temp=0)), self.game)
+                          lambda x: np.argmax(nmcts.getActionProb(x, temp=0)), self.game, display)
             pwins, nwins, draws = arena.playGames(self.args.arenaCompare)
 
-            print('NEW/PREV WINS : %d / %d ; DRAWS : %d' % (nwins, pwins, draws))
-            if pwins+nwins > 0 and float(nwins)/(pwins+nwins) < self.args.updateThreshold:
-                print('REJECTING NEW MODEL')
-                self.nnet.load_checkpoint(folder=self.args.checkpoint, filename='temp.pth.tar')
-            else:
-                print('ACCEPTING NEW MODEL')
-                self.nnet.save_checkpoint(folder=self.args.checkpoint, filename=self.getCheckpointFile(i))
-                self.nnet.save_checkpoint(folder=self.args.checkpoint, filename='best.pth.tar')                
-
+            print('NEW/BEST WINS : %d / %d ; DRAWS : %d' % (nwins, pwins, draws))
+            
+            # if pwins+nwins > 0 and float(nwins)/(pwins+nwins) < self.args.updateThreshold:
+            #     print('REJECTING NEW MODEL')
+            #     self.nnet.load_checkpoint(folder=self.args.checkpoint, filename='temp.pth.tar')
+            # else:
+            #     print('ACCEPTING NEW MODEL')
+            #     self.nnet.save_checkpoint(folder=self.args.checkpoint, filename=self.getCheckpointFile(i))
+            #     self.nnet.save_checkpoint(folder=self.args.checkpoint, filename='best.pth.tar')                
+            self.nnet.save_checkpoint(folder=self.args.checkpoint, filename=self.getCheckpointFile(i))
+            if pwins+nwins > 0 and float(nwins)/(pwins+nwins) > self.args.updateThreshold:
+                print('NEW_BEST')
+                self.nnet.save_checkpoint(folder=self.args.checkpoint, filename='best.pth.tar')
+            else
+                self.pnet.save_checkpoint(folder=self.args.checkpoint, filename='best.pth.tar')
+    
     def getCheckpointFile(self, iteration):
         return 'checkpoint_' + str(iteration) + '.pth.tar'
 

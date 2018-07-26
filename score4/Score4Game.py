@@ -2,7 +2,6 @@ from __future__ import print_function
 import sys
 sys.path.append('..')
 from Game import Game
-#import .Score4Symmetries as Symm
 from . import Score4Symmetries as Symm
 import numpy as np
 
